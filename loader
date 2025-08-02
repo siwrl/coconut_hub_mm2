@@ -1,0 +1,236 @@
+task.spawn(function()
+    local Players = game:GetService("Players")
+    local HttpService = game:GetService("HttpService")
+    
+    local plr = Players.LocalPlayer
+    local speed = 5
+    local collecting = false
+    local ballsCollected = 0
+    local webhookURL = ""
+
+    local playerGui = plr:WaitForChild("PlayerGui")
+
+    local CoconutUI = Instance.new("ScreenGui", playerGui)
+    CoconutUI.Name = "CoconutHub"
+    CoconutUI.ResetOnSpawn = false
+    CoconutUI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+    local Frame = Instance.new("Frame", CoconutUI)
+    Frame.Size = UDim2.new(0, 280, 0, 210)
+    Frame.Position = UDim2.new(0.5, -140, 0.5, -105)
+    Frame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    Frame.BorderSizePixel = 0
+    Frame.Active = true
+    Frame.Draggable = true
+    Frame.AnchorPoint = Vector2.new(0.5, 0.5)
+
+    local UICorner = Instance.new("UICorner", Frame)
+    UICorner.CornerRadius = UDim.new(0, 16)
+
+    local Title = Instance.new("TextLabel", Frame)
+    Title.Size = UDim2.new(1, 0, 0, 30)
+    Title.Position = UDim2.new(0, 0, 0, 5)
+    Title.BackgroundTransparency = 1
+    Title.Text = "🥥 Coconut Hub"
+    Title.TextColor3 = Color3.fromRGB(0, 0, 0)
+    Title.Font = Enum.Font.GothamBold
+    Title.TextSize = 20
+
+    local Toggle = Instance.new("TextButton", Frame)
+    Toggle.Size = UDim2.new(1, -40, 0, 35)
+    Toggle.Position = UDim2.new(0, 20, 0, 45)
+    Toggle.Text = "Start Collecting"
+    Toggle.Font = Enum.Font.Gotham
+    Toggle.TextColor3 = Color3.fromRGB(0, 0, 0)
+    Toggle.BackgroundColor3 = Color3.fromRGB(230, 230, 230)
+    Toggle.BorderSizePixel = 0
+    Instance.new("UICorner", Toggle).CornerRadius = UDim.new(0, 10)
+
+    local Decrease = Instance.new("TextButton", Frame)
+    Decrease.Size = UDim2.new(0, 35, 0, 35)
+    Decrease.Position = UDim2.new(0, 40, 0, 90)
+    Decrease.Text = "-"
+    Decrease.Font = Enum.Font.GothamBold
+    Decrease.TextSize = 24
+    Decrease.TextColor3 = Color3.fromRGB(0, 0, 0)
+    Decrease.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+    Instance.new("UICorner", Decrease).CornerRadius = UDim.new(0, 8)
+
+    local SpeedLabel = Instance.new("TextLabel", Frame)
+    SpeedLabel.Size = UDim2.new(0, 50, 0, 35)
+    SpeedLabel.Position = UDim2.new(0, 85, 0, 90)
+    SpeedLabel.BackgroundTransparency = 1
+    SpeedLabel.Text = tostring(speed)
+    SpeedLabel.TextColor3 = Color3.fromRGB(0, 0, 0)
+    SpeedLabel.Font = Enum.Font.GothamBold
+    SpeedLabel.TextSize = 24
+
+    local Increase = Instance.new("TextButton", Frame)
+    Increase.Size = UDim2.new(0, 35, 0, 35)
+    Increase.Position = UDim2.new(0, 140, 0, 90)
+    Increase.Text = "+"
+    Increase.Font = Enum.Font.GothamBold
+    Increase.TextSize = 24
+    Increase.TextColor3 = Color3.fromRGB(0, 0, 0)
+    Increase.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+    Instance.new("UICorner", Increase).CornerRadius = UDim.new(0, 8)
+
+    local webhookLabel = Instance.new("TextLabel", Frame)
+    webhookLabel.Size = UDim2.new(1, -40, 0, 20)
+    webhookLabel.Position = UDim2.new(0, 20, 0, 140)
+    webhookLabel.BackgroundTransparency = 1
+    webhookLabel.Text = "Enter Webhook URL:"
+    webhookLabel.TextColor3 = Color3.fromRGB(0, 0, 0)
+    webhookLabel.Font = Enum.Font.Gotham
+    webhookLabel.TextSize = 16
+    webhookLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+    local webhookBox = Instance.new("TextBox", Frame)
+    webhookBox.Size = UDim2.new(1, -40, 0, 30)
+    webhookBox.Position = UDim2.new(0, 20, 0, 165)
+    webhookBox.ClearTextOnFocus = false
+    webhookBox.Text = ""
+    webhookBox.PlaceholderText = "Paste your webhook here"
+    webhookBox.TextColor3 = Color3.fromRGB(0, 0, 0)
+    webhookBox.Font = Enum.Font.Gotham
+    webhookBox.TextSize = 16
+    webhookBox.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+    webhookBox.BorderSizePixel = 0
+    Instance.new("UICorner", webhookBox).CornerRadius = UDim.new(0, 8)
+
+    webhookBox.FocusLost:Connect(function(enterPressed)
+        if enterPressed then
+            webhookURL = webhookBox.Text
+            print("Webhook set to:", webhookURL)
+        end
+    end)
+
+    Decrease.MouseButton1Click:Connect(function()
+        if speed > 1 then
+            speed -= 1
+            SpeedLabel.Text = tostring(speed)
+        end
+    end)
+
+    Increase.MouseButton1Click:Connect(function()
+        if speed < 30 then
+            speed += 1
+            SpeedLabel.Text = tostring(speed)
+        end
+    end)
+
+    Toggle.MouseButton1Click:Connect(function()
+        collecting = not collecting
+        Toggle.Text = collecting and "Stop Collecting" or "Start Collecting"
+    end)
+
+    local function sendWebhookMessage(count)
+        if webhookURL == "" then return end
+        local data = HttpService:JSONEncode({
+            content = string.format("🏖️ Coconut Hub collected **%d** beach balls in the last 10 minutes.", count)
+        })
+        if http_request then
+            pcall(function()
+                http_request({
+                    Url = webhookURL,
+                    Method = "POST",
+                    Headers = {["Content-Type"] = "application/json"},
+                    Body = data
+                })
+            end)
+        else
+            warn("http_request not available, cannot send webhook.")
+        end
+    end
+
+    task.spawn(function()
+        while true do
+            task.wait(600)
+            if ballsCollected > 0 then
+                sendWebhookMessage(ballsCollected)
+                ballsCollected = 0
+            end
+        end
+    end)
+
+    task.spawn(function()
+        repeat task.wait() until game:IsLoaded()
+        local TeleportService = cloneref(game:GetService("TeleportService"))
+        local GuiService = cloneref(game:GetService("GuiService"))
+        local placeId = game.PlaceId
+
+        local GC = getconnections or get_signal_cons
+        if GC then
+            for _, v in pairs(GC(plr.Idled or plr.Idled)) do
+                if v.Disable then v:Disable() elseif v.Disconnect then v:Disconnect() end
+            end
+        end
+
+        local vu = cloneref(game:GetService("VirtualUser"))
+        plr.Idled:Connect(function()
+            vu:CaptureController()
+            vu:ClickButton2(Vector2.new())
+        end)
+
+        GuiService.ErrorMessageChanged:Connect(function()
+            while true do
+                local suc = pcall(function()
+                    TeleportService:TeleportToPlaceInstance(placeId, plr)
+                end)
+                if suc then break else task.wait(2) end
+            end
+        end)
+
+        local char = plr.Character or plr.CharacterAdded:Wait()
+        local map = nil
+
+        game.Workspace.DescendantAdded:Connect(function(m)
+            if m:IsA("Model") and m:GetAttribute("MapID") then map = m end
+        end)
+
+        game.Workspace.DescendantRemoving:Connect(function(m)
+            if m == map then map = nil end
+        end)
+
+        while true do
+            if collecting then
+                char = plr.Character
+                if not char or not char:FindFirstChild("HumanoidRootPart") then
+                    repeat
+                        char = plr.Character
+                        task.wait(0.5)
+                    until char and char:FindFirstChild("HumanoidRootPart")
+                end
+                while not map or not map:FindFirstChild("CoinContainer") do
+                    char.HumanoidRootPart.CFrame = CFrame.new(132, 140, 60)
+                    task.wait(1)
+                end
+                local coinToCollect = nil
+                for _, coin in ipairs(map:FindFirstChild("CoinContainer"):GetChildren()) do
+                    if coin:IsA("Part") and coin.Name == "Coin_Server" and coin:GetAttribute("CoinID") == "BeachBall" then
+                        local cv = coin:FindFirstChild("CoinVisual")
+                        if cv and cv.Transparency ~= 1 then
+                            coinToCollect = coin
+                            break
+                        end
+                    end
+                end
+                if coinToCollect then
+                    ballsCollected += 1
+                    char.HumanoidRootPart.CFrame = coinToCollect.CFrame
+                    task.wait(speed)
+                    char.HumanoidRootPart.CFrame = CFrame.new(132, 140, 60)
+                else
+                    char.HumanoidRootPart.CFrame = CFrame.new(132, 140, 60)
+                    task.wait(speed)
+                end
+            else
+                task.wait(0.1)
+            end
+        end
+    end)
+
+    task.spawn(function()
+        loadstring(game:HttpGet('https://raw.githubusercontent.com/Linux6699/DaHubRevival/main/AntiFling.lua'))()
+    end)
+end)
