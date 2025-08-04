@@ -1,236 +1,211 @@
-task.spawn(function()
-    local Players = game:GetService("Players")
-    local HttpService = game:GetService("HttpService")
-    
-    local plr = Players.LocalPlayer
-    local speed = 5
-    local collecting = false
-    local ballsCollected = 0
-    local webhookURL = ""
+local Rayfield = loadstring(game:HttpGet("https://raw.githubusercontent.com/shlexware/Rayfield/main/source"))()
 
-    local playerGui = plr:WaitForChild("PlayerGui")
+local Window = Rayfield:CreateWindow({
+    Name = "coconut hub",
+    LoadingTitle = "coconut hub",
+    LoadingSubtitle = "by your name here",
+    ConfigurationSaving = {
+        Enabled = false
+    },
+    Discord = {
+        Enabled = false
+    },
+    KeySystem = false
+})
 
-    local CoconutUI = Instance.new("ScreenGui", playerGui)
-    CoconutUI.Name = "CoconutHub"
-    CoconutUI.ResetOnSpawn = false
-    CoconutUI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+local Tab = Window:CreateTab("Auto Farm", 4483362458)
+local Section = Tab:CreateSection("Coin Farming")
 
-    local Frame = Instance.new("Frame", CoconutUI)
-    Frame.Size = UDim2.new(0, 280, 0, 210)
-    Frame.Position = UDim2.new(0.5, -140, 0.5, -105)
-    Frame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    Frame.BorderSizePixel = 0
-    Frame.Active = true
-    Frame.Draggable = true
-    Frame.AnchorPoint = Vector2.new(0.5, 0.5)
+local autofarmEnabled = false
+local autofarmThread
 
-    local UICorner = Instance.new("UICorner", Frame)
-    UICorner.CornerRadius = UDim.new(0, 16)
+local rt = {}
+local Octree = loadstring(game:HttpGet("https://raw.githubusercontent.com/Sleitnick/rbxts-octo-tree/main/src/init.lua", true))()
 
-    local Title = Instance.new("TextLabel", Frame)
-    Title.Size = UDim2.new(1, 0, 0, 30)
-    Title.Position = UDim2.new(0, 0, 0, 5)
-    Title.BackgroundTransparency = 1
-    Title.Text = "🥥 Coconut Hub"
-    Title.TextColor3 = Color3.fromRGB(0, 0, 0)
-    Title.Font = Enum.Font.GothamBold
-    Title.TextSize = 20
+rt.Players = game:GetService("Players")
+rt.player = rt.Players.LocalPlayer
+rt.Material = Enum.Material.Ice
+rt.TpBackToStart = true
+rt.radius = 200
+rt.walkspeed = 30
+rt.touchedCoins = {}
+rt.positionChangeConnections = setmetatable({}, { __mode = "v" })
+rt.MainGUI = rt.player:WaitForChild("PlayerGui"):WaitForChild("MainGUI")
+rt.octree = Octree.new()
 
-    local Toggle = Instance.new("TextButton", Frame)
-    Toggle.Size = UDim2.new(1, -40, 0, 35)
-    Toggle.Position = UDim2.new(0, 20, 0, 45)
-    Toggle.Text = "Start Collecting"
-    Toggle.Font = Enum.Font.Gotham
-    Toggle.TextColor3 = Color3.fromRGB(0, 0, 0)
-    Toggle.BackgroundColor3 = Color3.fromRGB(230, 230, 230)
-    Toggle.BorderSizePixel = 0
-    Instance.new("UICorner", Toggle).CornerRadius = UDim.new(0, 10)
+function rt:Character()
+    return self.player.Character or self.player.CharacterAdded:Wait()
+end
 
-    local Decrease = Instance.new("TextButton", Frame)
-    Decrease.Size = UDim2.new(0, 35, 0, 35)
-    Decrease.Position = UDim2.new(0, 40, 0, 90)
-    Decrease.Text = "-"
-    Decrease.Font = Enum.Font.GothamBold
-    Decrease.TextSize = 24
-    Decrease.TextColor3 = Color3.fromRGB(0, 0, 0)
-    Decrease.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
-    Instance.new("UICorner", Decrease).CornerRadius = UDim.new(0, 8)
+function rt:Map()
+    for _, v in workspace:GetDescendants() do
+        if v:IsA("Model") and v.Name == "Base" then
+            return v.Parent
+        end
+    end
+    return nil
+end
 
-    local SpeedLabel = Instance.new("TextLabel", Frame)
-    SpeedLabel.Size = UDim2.new(0, 50, 0, 35)
-    SpeedLabel.Position = UDim2.new(0, 85, 0, 90)
-    SpeedLabel.BackgroundTransparency = 1
-    SpeedLabel.Text = tostring(speed)
-    SpeedLabel.TextColor3 = Color3.fromRGB(0, 0, 0)
-    SpeedLabel.Font = Enum.Font.GothamBold
-    SpeedLabel.TextSize = 24
+function rt.Disconnect(connection)
+    if typeof(connection) ~= "RBXScriptConnection" then return end
+    if connection.Connected then connection:Disconnect() end
+end
 
-    local Increase = Instance.new("TextButton", Frame)
-    Increase.Size = UDim2.new(0, 35, 0, 35)
-    Increase.Position = UDim2.new(0, 140, 0, 90)
-    Increase.Text = "+"
-    Increase.Font = Enum.Font.GothamBold
-    Increase.TextSize = 24
-    Increase.TextColor3 = Color3.fromRGB(0, 0, 0)
-    Increase.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
-    Instance.new("UICorner", Increase).CornerRadius = UDim.new(0, 8)
+local function isCoinTouched(coin)
+    return rt.touchedCoins[coin]
+end
 
-    local webhookLabel = Instance.new("TextLabel", Frame)
-    webhookLabel.Size = UDim2.new(1, -40, 0, 20)
-    webhookLabel.Position = UDim2.new(0, 20, 0, 140)
-    webhookLabel.BackgroundTransparency = 1
-    webhookLabel.Text = "Enter Webhook URL:"
-    webhookLabel.TextColor3 = Color3.fromRGB(0, 0, 0)
-    webhookLabel.Font = Enum.Font.Gotham
-    webhookLabel.TextSize = 16
-    webhookLabel.TextXAlignment = Enum.TextXAlignment.Left
+local function markCoinAsTouched(coin)
+    rt.touchedCoins[coin] = true
+    local node = rt.octree:FindFirstNode(coin)
+    if node then
+        rt.octree:RemoveNode(node)
+    end
+end
 
-    local webhookBox = Instance.new("TextBox", Frame)
-    webhookBox.Size = UDim2.new(1, -40, 0, 30)
-    webhookBox.Position = UDim2.new(0, 20, 0, 165)
-    webhookBox.ClearTextOnFocus = false
-    webhookBox.Text = ""
-    webhookBox.PlaceholderText = "Paste your webhook here"
-    webhookBox.TextColor3 = Color3.fromRGB(0, 0, 0)
-    webhookBox.Font = Enum.Font.Gotham
-    webhookBox.TextSize = 16
-    webhookBox.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
-    webhookBox.BorderSizePixel = 0
-    Instance.new("UICorner", webhookBox).CornerRadius = UDim.new(0, 8)
+local function setupTouchTracking(coin)
+    local touchInterest = coin:FindFirstChildWhichIsA("TouchTransmitter")
+    if touchInterest then
+        local connection
+        connection = touchInterest.AncestryChanged:Connect(function(_, parent)
+            if parent == nil then
+                markCoinAsTouched(coin)
+                rt.Disconnect(connection)
+            end
+        end)
+        rt.positionChangeConnections[coin] = connection
+    end
+end
 
-    webhookBox.FocusLost:Connect(function(enterPressed)
-        if enterPressed then
-            webhookURL = webhookBox.Text
-            print("Webhook set to:", webhookURL)
+local function setupPositionTracking(coin, LastY)
+    local connection
+    connection = coin:GetPropertyChangedSignal("Position"):Connect(function()
+        if LastY and LastY ~= coin.Position.Y then
+            markCoinAsTouched(coin)
+            rt.Disconnect(connection)
+            coin:Destroy()
         end
     end)
+    rt.positionChangeConnections[coin] = connection
+end
 
-    Decrease.MouseButton1Click:Connect(function()
-        if speed > 1 then
-            speed -= 1
-            SpeedLabel.Text = tostring(speed)
-        end
-    end)
-
-    Increase.MouseButton1Click:Connect(function()
-        if speed < 30 then
-            speed += 1
-            SpeedLabel.Text = tostring(speed)
-        end
-    end)
-
-    Toggle.MouseButton1Click:Connect(function()
-        collecting = not collecting
-        Toggle.Text = collecting and "Stop Collecting" or "Start Collecting"
-    end)
-
-    local function sendWebhookMessage(count)
-        if webhookURL == "" then return end
-        local data = HttpService:JSONEncode({
-            content = string.format("🏖️ Coconut Hub collected **%d** beach balls in the last 10 minutes.", count)
-        })
-        if http_request then
-            pcall(function()
-                http_request({
-                    Url = webhookURL,
-                    Method = "POST",
-                    Headers = {["Content-Type"] = "application/json"},
-                    Body = data
-                })
-            end)
-        else
-            warn("http_request not available, cannot send webhook.")
+local function populateOctree()
+    rt.octree:ClearAllNodes()
+    for _, d in pairs(rt.coinContainer:GetDescendants()) do
+        if d:IsA("TouchTransmitter") then
+            local coin = d.Parent
+            if not isCoinTouched(coin) then
+                rt.octree:CreateNode(coin.Position, coin)
+                setupTouchTracking(coin)
+            end
+            setupPositionTracking(coin, coin.Position.Y)
         end
     end
 
-    task.spawn(function()
-        while true do
-            task.wait(600)
-            if ballsCollected > 0 then
-                sendWebhookMessage(ballsCollected)
-                ballsCollected = 0
+    rt.Added = rt.coinContainer.DescendantAdded:Connect(function(descendant)
+        if descendant:IsA("MeshPart") and descendant.Material == rt.Material then
+            local coin = descendant.Parent
+            if not isCoinTouched(coin) then
+                rt.octree:CreateNode(coin.Position, coin)
+                setupTouchTracking(coin)
+                setupPositionTracking(coin, coin.Position.Y)
             end
         end
     end)
 
-    task.spawn(function()
-        repeat task.wait() until game:IsLoaded()
-        local TeleportService = cloneref(game:GetService("TeleportService"))
-        local GuiService = cloneref(game:GetService("GuiService"))
-        local placeId = game.PlaceId
-
-        local GC = getconnections or get_signal_cons
-        if GC then
-            for _, v in pairs(GC(plr.Idled or plr.Idled)) do
-                if v.Disable then v:Disable() elseif v.Disconnect then v:Disconnect() end
-            end
-        end
-
-        local vu = cloneref(game:GetService("VirtualUser"))
-        plr.Idled:Connect(function()
-            vu:CaptureController()
-            vu:ClickButton2(Vector2.new())
-        end)
-
-        GuiService.ErrorMessageChanged:Connect(function()
-            while true do
-                local suc = pcall(function()
-                    TeleportService:TeleportToPlaceInstance(placeId, plr)
-                end)
-                if suc then break else task.wait(2) end
-            end
-        end)
-
-        local char = plr.Character or plr.CharacterAdded:Wait()
-        local map = nil
-
-        game.Workspace.DescendantAdded:Connect(function(m)
-            if m:IsA("Model") and m:GetAttribute("MapID") then map = m end
-        end)
-
-        game.Workspace.DescendantRemoving:Connect(function(m)
-            if m == map then map = nil end
-        end)
-
-        while true do
-            if collecting then
-                char = plr.Character
-                if not char or not char:FindFirstChild("HumanoidRootPart") then
-                    repeat
-                        char = plr.Character
-                        task.wait(0.5)
-                    until char and char:FindFirstChild("HumanoidRootPart")
-                end
-                while not map or not map:FindFirstChild("CoinContainer") do
-                    char.HumanoidRootPart.CFrame = CFrame.new(132, 140, 60)
-                    task.wait(1)
-                end
-                local coinToCollect = nil
-                for _, coin in ipairs(map:FindFirstChild("CoinContainer"):GetChildren()) do
-                    if coin:IsA("Part") and coin.Name == "Coin_Server" and coin:GetAttribute("CoinID") == "BeachBall" then
-                        local cv = coin:FindFirstChild("CoinVisual")
-                        if cv and cv.Transparency ~= 1 then
-                            coinToCollect = coin
-                            break
-                        end
-                    end
-                end
-                if coinToCollect then
-                    ballsCollected += 1
-                    char.HumanoidRootPart.CFrame = coinToCollect.CFrame
-                    task.wait(speed)
-                    char.HumanoidRootPart.CFrame = CFrame.new(132, 140, 60)
-                else
-                    char.HumanoidRootPart.CFrame = CFrame.new(132, 140, 60)
-                    task.wait(speed)
-                end
-            else
-                task.wait(0.1)
+    rt.Removing = rt.coinContainer.DescendantRemoving:Connect(function(descendant)
+        if descendant:IsA("TouchTransmitter") and descendant.Parent.Name == "Coin_Server" then
+            local coin = descendant.Parent
+            if isCoinTouched(coin) then
+                markCoinAsTouched(coin)
             end
         end
     end)
+end
 
-    task.spawn(function()
-        loadstring(game:HttpGet('https://raw.githubusercontent.com/Linux6699/DaHubRevival/main/AntiFling.lua'))()
+local function moveToPositionSlowly(targetPosition, duration)
+    rt.humanoidRootPart = rt:Character().PrimaryPart
+    local start = rt.humanoidRootPart.Position
+    local startTime = tick()
+
+    while autofarmEnabled do
+        local elapsed = tick() - startTime
+        local alpha = math.min(elapsed / duration, 1)
+        rt:Character():PivotTo(CFrame.new(start:Lerp(targetPosition, alpha)))
+        if alpha >= 1 then task.wait(0.2); break end
+        task.wait()
+    end
+end
+
+local function collectCoins()
+    rt.coinContainer = rt:Map():WaitForChild("CoinContainer")
+    rt.waypoint = rt:Character():GetPivot()
+
+    populateOctree()
+
+    while autofarmEnabled do
+        if rt.MainGUI.Game.CoinBags.Container.SnowToken.FullBagIcon.Visible then
+            break
+        end
+
+        local nearestNode = rt.octree:GetNearest(rt:Character().PrimaryPart.Position, rt.radius, 1)[1]
+        if nearestNode then
+            local coin = nearestNode.Object
+            if not isCoinTouched(coin) then
+                local pos = coin.Position
+                local dist = (rt:Character().PrimaryPart.Position - pos).Magnitude
+                local duration = dist / rt.walkspeed
+
+                moveToPositionSlowly(pos, duration)
+                markCoinAsTouched(coin)
+                task.wait(0.2)
+            end
+        else
+            task.wait(1)
+        end
+    end
+
+    if rt.TpBackToStart then
+        rt:Character():PivotTo(rt.waypoint)
+    end
+end
+
+local function startAutofarm()
+    autofarmEnabled = true
+    autofarmThread = coroutine.create(collectCoins)
+    coroutine.resume(autofarmThread)
+
+    rt.player.CharacterRemoving:Connect(function()
+        autofarmEnabled = false
+        if autofarmThread then
+            coroutine.close(autofarmThread)
+            autofarmThread = nil
+        end
+        for _, c in pairs(rt.positionChangeConnections) do rt.Disconnect(c) end
+        rt.Disconnect(rt.Added)
+        rt.Disconnect(rt.Removing)
     end)
-end)
+end
+
+local function stopAutofarm()
+    autofarmEnabled = false
+    if autofarmThread then
+        coroutine.close(autofarmThread)
+        autofarmThread = nil
+    end
+    for _, c in pairs(rt.positionChangeConnections) do rt.Disconnect(c) end
+    rt.Disconnect(rt.Added)
+    rt.Disconnect(rt.Removing)
+end
+
+Tab:CreateToggle({
+    Name = "Enable Coin Autofarm",
+    CurrentValue = false,
+    Callback = function(Value)
+        if Value then
+            startAutofarm()
+        else
+            stopAutofarm()
+        end
+    end
+})
